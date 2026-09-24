@@ -11,5 +11,8 @@
 # App binary
 kubevirt-apiserver-proxy
 
+# Air live-reload temp files
+tmp/
+
 # Go workspace file
 go.work

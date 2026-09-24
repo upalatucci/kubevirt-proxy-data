@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/config"
 	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/handlers"
+	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/handlers/allowednamespaces"
 )
 
 const (
@@ -36,6 +37,7 @@ func main() {
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	router.GET("/health", cache.CacheByRequestURI(memoryStore, healthCacheTime), handlers.HealthHandler)
+	router.POST("/apis/allowednamespaces", allowednamespaces.Handler)
 	router.GET("/apis/*path", cache.CacheByRequestURI(memoryStore, apiCacheTime), handlers.RequestHandler)
 
 	server := &http.Server{
@@ -57,9 +59,8 @@ func main() {
 
 	server.TLSConfig.CurvePreferences = cfg.GetTLSCurveIDs()
 
-	clientCfg := server.TLSConfig.Clone()
 	server.TLSConfig.GetConfigForClient = func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
-		return clientCfg.Clone(), nil
+		return server.TLSConfig.Clone(), nil
 	}
 
 	log.Printf("listening for server 8080 - v0.0.10 - API cache time: %v", apiCacheTime)
