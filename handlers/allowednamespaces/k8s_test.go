@@ -35,7 +35,7 @@ func TestListAccessibleNamespacesFallsBackToOpenShiftProjects(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/apis/allowednamespaces", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 
-	namespaces, err := listAccessibleNamespaces(client, req)
+	namespaces, err := listAccessibleNamespaces(client, req, "")
 	if err != nil {
 		t.Fatalf("expected fallback to succeed, got error: %v", err)
 	}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/handlers"
+	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/handlers/multicluster"
 )
 
 // Handler returns the namespaces where the caller is allowed to perform
@@ -43,8 +44,10 @@ func Handler(c *gin.Context) {
 		return
 	}
 
+	cluster := multicluster.ClusterFromRequest(c.Request, request.ResourceAttributes.Cluster)
+
 	client := handlers.NewK8sHTTPClient()
-	namespaces, err := listAccessibleNamespaces(client, c.Request)
+	candidates, err := listNamespaceCandidates(client, c.Request, cluster)
 	if err != nil {
 		log.Println("Failed to list namespaces: ", err.Error())
 
@@ -57,7 +60,13 @@ func Handler(c *gin.Context) {
 		return
 	}
 
-	allowedNamespaces, failures := filterAllowedNamespaces(client, c.Request, request.ResourceAttributes, namespaces, maxConcurrency)
+	allowedNamespaces, failures := filterAllowedNamespaces(
+		client,
+		c.Request,
+		request.ResourceAttributes,
+		candidates,
+		maxConcurrency,
+	)
 
 	c.JSON(http.StatusOK, AllowedNamespacesResponse{
 		AllowedNamespaces: allowedNamespaces,

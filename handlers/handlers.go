@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/handlers/multicluster"
 	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/proxy"
 	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/util"
 )
@@ -19,9 +20,8 @@ func RequestHandler(c *gin.Context) {
 		c.Request.URL.Scheme = "https"
 	}
 
-	if c.Request.URL.Host == "" {
-		c.Request.URL.Host = APIServerURL
-	}
+	cluster := multicluster.ClusterFromRequest(c.Request, "")
+	multicluster.RewriteProxyRequest(c.Request, cluster)
 
 	tlsConf := &tls.Config{InsecureSkipVerify: true}
 

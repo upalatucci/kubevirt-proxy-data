@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/handlers/multicluster"
 )
 
 const (
@@ -26,6 +28,11 @@ var (
 )
 
 var APIServerURL = getEnvOrDefault("KUBE_API_SERVER", "kubernetes.default.svc")
+
+func init() {
+	multicluster.HubAPIServerHostResolver = func() string { return APIServerURL }
+	multicluster.K8sHTTPClientProvider = NewK8sHTTPClient
+}
 
 func getEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
@@ -91,17 +98,6 @@ func k8sTLSConfigFromPath(caPath string) *tls.Config {
 	}
 
 	return cfg
-}
-
-func ForwardAuthHeaders(from *http.Request, to *http.Request) {
-	for key, values := range from.Header {
-		upperKey := strings.ToUpper(key)
-		if upperKey == "AUTHORIZATION" || strings.HasPrefix(upperKey, "IMPERSONATE-") {
-			for _, value := range values {
-				to.Header.Add(key, value)
-			}
-		}
-	}
 }
 
 func HasAuthHeader(req *http.Request) bool {

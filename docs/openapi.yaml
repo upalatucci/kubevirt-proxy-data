@@ -76,6 +76,11 @@ paths:
         Optional `maxConcurrency` in the request body limits parallel SSAR checks (positive
         integer, capped by server configuration). When omitted, the server default applies.
 
+        Optional `resourceAttributes.cluster` targets a managed cluster via ACM cluster-proxy
+        (same semantics as the `cluster` query parameter on `GET /apis/*`). When omitted or equal
+        to the ACM hub cluster name (`localHubName` from console `GET /hub`), the hub API server
+        (`KUBE_API_SERVER`) is used. The `cluster` field is not sent to Kubernetes SSAR.
+
         Successful responses may be cached for 2 minutes (keyed by auth headers and
         request body). Responses that include `failures` are not cached.
       operationId: postAllowedNamespaces
@@ -124,10 +129,13 @@ paths:
     get:
       summary: Kubernetes API proxy (GET)
       description: |
-        Forwards the request to the cluster API server configured by `KUBE_API_SERVER`
-        (default `kubernetes.default.svc`). The caller's `Authorization` header is passed
-        through. WebSocket upgrades use the same path prefix with impersonation metadata
-        in subprotocols when applicable.
+        Forwards the request to the hub Kubernetes API server (`KUBE_API_SERVER`, default
+        `kubernetes.default.svc`) or, when the optional `cluster` query parameter names a
+        managed cluster, to the ACM cluster-proxy addon (`CLUSTER_PROXY_ADDON_HOST`:`CLUSTER_PROXY_ADDON_PORT`,
+        default `cluster-proxy-addon-user.multicluster-engine.svc.cluster.local:9092`).
+        Set `CLUSTER_PROXY_ENABLED=false` to always use the hub API server. The caller's
+        `Authorization` header is passed through. WebSocket upgrades use the same routing
+        with impersonation metadata in subprotocols when applicable.
 
         **List filtering:** If the client sends query parameters and the upstream response
         is a Kubernetes list (`items` array), the proxy may filter `items` server-side.
@@ -143,6 +151,14 @@ paths:
       security:
         - bearerAuth: []
       parameters:
+        - name: cluster
+          in: query
+          required: false
+          description: |
+            Managed cluster name for ACM cluster-proxy routing. Omitted or equal to the ACM hub
+            cluster name (`localHubName`) targets the hub API server.
+          schema:
+            type: string
         - name: apiPath
           in: path
           required: true
@@ -334,6 +350,12 @@ components:
       required:
         - verb
       properties:
+        cluster:
+          type: string
+          description: |
+            Managed cluster for namespace discovery and SSAR routing. Same semantics as the
+            `cluster` query parameter on `GET /apis/*`. Omitted or equal to ACM `localHubName`
+            for the hub API server.
         namespace:
           type: string
         verb:

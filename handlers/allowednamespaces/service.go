@@ -13,36 +13,48 @@ func filterAllowedNamespaces(
 	client *http.Client,
 	incomingReq *http.Request,
 	resourceAttributes ResourceAttributes,
-	namespaces []string,
+	candidates []namespaceCandidate,
 	maxConcurrency int,
 ) ([]string, []NamespaceFailure) {
-	if len(namespaces) == 0 {
+	if len(candidates) == 0 {
 		return []string{}, nil
 	}
 
-	if maxConcurrency > len(namespaces) {
-		maxConcurrency = len(namespaces)
+	if maxConcurrency > len(candidates) {
+		maxConcurrency = len(candidates)
 	}
 
-	allowed := make([]string, 0, len(namespaces))
+	allowed := make([]string, 0, len(candidates))
 	failures := make([]NamespaceFailure, 0)
 	var mu sync.Mutex
 	sem := make(chan struct{}, maxConcurrency)
 	var wg sync.WaitGroup
 
-	for _, namespace := range namespaces {
+	for _, candidate := range candidates {
 		wg.Add(1)
-		go func(ns string) {
+		go func(candidate namespaceCandidate) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			status, err := createSelfSubjectAccessReviewWithRetry(client, incomingReq, resourceAttributes, ns)
+			status, err := createSelfSubjectAccessReviewWithRetry(
+				client,
+				incomingReq,
+				candidate.cluster,
+				resourceAttributes,
+				candidate.name,
+			)
 			if err != nil {
-				log.Printf("Failed selfsubjectaccessreview for namespace %q after %d attempts: %v", ns, ssarMaxAttempts, err)
+				log.Printf(
+					"Failed selfsubjectaccessreview for namespace %q (cluster %q) after %d attempts: %v",
+					candidate.name,
+					candidate.cluster,
+					ssarMaxAttempts,
+					err,
+				)
 				mu.Lock()
 				failures = append(failures, NamespaceFailure{
-					Namespace: ns,
+					Namespace: candidate.name,
 					Error:     err.Error(),
 				})
 				mu.Unlock()
@@ -54,9 +66,9 @@ func filterAllowedNamespaces(
 			}
 
 			mu.Lock()
-			allowed = append(allowed, ns)
+			allowed = append(allowed, candidate.name)
 			mu.Unlock()
-		}(namespace)
+		}(candidate)
 	}
 
 	wg.Wait()
@@ -70,13 +82,14 @@ func filterAllowedNamespaces(
 func createSelfSubjectAccessReviewWithRetry(
 	client *http.Client,
 	incomingReq *http.Request,
+	cluster string,
 	resourceAttributes ResourceAttributes,
 	namespace string,
 ) (selfSubjectAccessReviewStatus, error) {
 	var lastErr error
 
 	for attempt := 1; attempt <= ssarMaxAttempts; attempt++ {
-		status, err := createSelfSubjectAccessReview(client, incomingReq, resourceAttributes, namespace)
+		status, err := createSelfSubjectAccessReview(client, incomingReq, cluster, resourceAttributes, namespace)
 		if err == nil {
 			return status, nil
 		}

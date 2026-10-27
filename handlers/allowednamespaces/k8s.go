@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/handlers"
+	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/handlers/multicluster"
+	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/util"
 )
 
 const (
@@ -15,8 +17,8 @@ const (
 	openshiftProjectsAPIPath = "/apis/project.openshift.io/v1/projects"
 )
 
-func listAccessibleNamespaces(client *http.Client, incomingReq *http.Request) ([]string, error) {
-	namespaces, err := fetchResourceNames(client, incomingReq, namespacesAPIPath)
+func listAccessibleNamespaces(client *http.Client, incomingReq *http.Request, cluster string) ([]string, error) {
+	namespaces, err := fetchResourceNames(client, incomingReq, cluster, namespacesAPIPath)
 	if err == nil {
 		return namespaces, nil
 	}
@@ -26,16 +28,21 @@ func listAccessibleNamespaces(client *http.Client, incomingReq *http.Request) ([
 		return nil, err
 	}
 
-	return fetchResourceNames(client, incomingReq, openshiftProjectsAPIPath)
+	return fetchResourceNames(client, incomingReq, cluster, openshiftProjectsAPIPath)
 }
 
-func fetchResourceNames(client *http.Client, incomingReq *http.Request, apiPath string) ([]string, error) {
-	req, err := http.NewRequestWithContext(incomingReq.Context(), http.MethodGet, handlers.APIServerBaseURL()+apiPath, nil)
+func fetchResourceNames(client *http.Client, incomingReq *http.Request, cluster string, apiPath string) ([]string, error) {
+	req, err := http.NewRequestWithContext(
+		incomingReq.Context(),
+		http.MethodGet,
+		multicluster.KubernetesURL(cluster, apiPath, incomingReq),
+		nil,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	handlers.ForwardAuthHeaders(incomingReq, req)
+	util.ForwardAuthHeaders(incomingReq, req)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
@@ -74,11 +81,13 @@ func fetchResourceNames(client *http.Client, incomingReq *http.Request, apiPath 
 func createSelfSubjectAccessReview(
 	client *http.Client,
 	incomingReq *http.Request,
+	cluster string,
 	resourceAttributes ResourceAttributes,
 	namespace string,
 ) (selfSubjectAccessReviewStatus, error) {
 	attrs := resourceAttributes
 	attrs.Namespace = namespace
+	attrs.Cluster = ""
 
 	requestBody, err := json.Marshal(selfSubjectAccessReview{
 		APIVersion: "authorization.k8s.io/v1",
@@ -96,14 +105,14 @@ func createSelfSubjectAccessReview(
 	req, err := http.NewRequestWithContext(
 		incomingReq.Context(),
 		http.MethodPost,
-		handlers.APIServerBaseURL()+ssarAPIPath,
+		multicluster.KubernetesURL(cluster, ssarAPIPath, incomingReq),
 		bytes.NewReader(requestBody),
 	)
 	if err != nil {
 		return selfSubjectAccessReviewStatus{}, err
 	}
 
-	handlers.ForwardAuthHeaders(incomingReq, req)
+	util.ForwardAuthHeaders(incomingReq, req)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 

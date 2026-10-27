@@ -24,14 +24,27 @@ Enable **Settings → Pages → Build and deployment → GitHub Actions** if the
 
 Returns the namespaces where the caller is allowed to perform a Kubernetes action, using SelfSubjectAccessReview (SSAR) against the cluster API server.
 
-- **Request body:** JSON with `resourceAttributes` (at minimum `verb`; optional `group`, `version`, `resource`, `subresource`, `namespace`, `name`) and optional `maxConcurrency` (positive integer, server-capped) to tune parallel SSAR checks
+- **Request body:** JSON with `resourceAttributes` (at minimum `verb`; optional `cluster` for ACM spoke routing, `group`, `version`, `resource`, `subresource`, `namespace`, `name`) and optional `maxConcurrency` (positive integer, server-capped)
 - **Authorization:** Bearer token in the `Authorization` header (required)
 - **Response:** `allowedNamespaces` (string array) and optional `failures` (per-namespace SSAR errors)
 - **Caching:** 2 minutes (keyed by auth headers and request body; responses with `failures` are not cached)
 
 ### `GET /apis/*`
 
-Forwards the request to the cluster API server (`KUBE_API_SERVER`, default `kubernetes.default.svc`). The caller's `Authorization` header (and websocket subprotocol impersonation headers when applicable) are passed through. This is not limited to VirtualMachine resources; any API path the UI requests can be proxied, subject to the user's RBAC on the cluster.
+Forwards the request to the hub API server (`KUBE_API_SERVER`, default `kubernetes.default.svc`) or to a managed cluster through the ACM **cluster-proxy** addon when the `cluster` query parameter names a spoke (for example `GET /apis/kubevirt.io/v1/virtualmachines?cluster=my-spoke`). The hub cluster name is resolved from the ACM console backend `GET /hub` (`localHubName`, same as `useHubClusterName` in the multicluster SDK), with a long-lived in-process cache; an omitted `cluster` or a value equal to that hub name uses the hub API directly. The caller's `Authorization` header (and websocket subprotocol impersonation headers when applicable) are passed through. This is not limited to VirtualMachine resources; any API path the UI requests can be proxied, subject to the user's RBAC on the target cluster.
+
+### Multicluster (ACM)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CLUSTER_PROXY_ENABLED` | enabled | Set to `false` to disable cluster-proxy routing |
+| `CLUSTER_PROXY_ADDON_HOST` | `cluster-proxy-addon-user.multicluster-engine.svc.cluster.local` | cluster-proxy Service host |
+| `CLUSTER_PROXY_ADDON_PORT` | `9092` | cluster-proxy port |
+| `ACM_CONSOLE_BACKEND_URL` | MCE console Service (`…:9000`) | Base URL for `GET /hub` hub discovery |
+| `ACM_CONSOLE_HUB_URL` | (derived from backend URL) | Full override URL for hub configuration |
+| `ACM_HUB_CONFIG_CACHE_TTL` | `24h` | Cache TTL for `localHubName` |
+
+`POST /apis/allowednamespaces` lists namespaces on the target cluster (hub or `resourceAttributes.cluster`) and runs SSAR via cluster-proxy when a managed cluster is selected.
 
 **List filtering (optional):** When the client sends query parameters on a **list** response (`items` array), the proxy can filter items server-side before returning JSON to the UI. This is primarily used for large VirtualMachine lists. Examples:
 

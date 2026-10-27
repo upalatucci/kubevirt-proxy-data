@@ -16,6 +16,7 @@ type NamespaceFailure struct {
 }
 
 type ResourceAttributes struct {
+	Cluster     string `json:"cluster,omitempty"`
 	Namespace   string `json:"namespace,omitempty"`
 	Verb        string `json:"verb"`
 	Group       string `json:"group,omitempty"`
