@@ -71,7 +71,6 @@ func TestHubConfigCacheTTLCustom(t *testing.T) {
 func TestIsHubClusterFallsBackToLocalClusterWhenDiscoveryFails(t *testing.T) {
 	resetHubNameCache()
 	HubClusterNameOverride = ""
-	t.Setenv("ACM_LOCAL_HUB_CLUSTER_NAME", "")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	if !IsHubCluster("local-cluster", req) {
@@ -85,7 +84,6 @@ func TestIsHubClusterFallsBackToLocalClusterWhenDiscoveryFails(t *testing.T) {
 func TestLocalHubNameCachesDiscoveryFailure(t *testing.T) {
 	resetHubNameCache()
 	HubClusterNameOverride = ""
-	t.Setenv("ACM_LOCAL_HUB_CLUSTER_NAME", "")
 	t.Setenv("ACM_CONSOLE_HUB_URL", "http://127.0.0.1:1/hub")
 	t.Setenv("ACM_HUB_DISCOVERY_FAILURE_CACHE_TTL", "10m")
 	HubAPIServerHostResolver = func() string { return "127.0.0.1:1" }
@@ -100,19 +98,5 @@ func TestLocalHubNameCachesDiscoveryFailure(t *testing.T) {
 	}
 	if got := LocalHubName(req); got != "" {
 		t.Fatalf("expected cached failure, got %q", got)
-	}
-}
-
-func TestConfiguredHubClusterNameFromEnv(t *testing.T) {
-	resetHubNameCache()
-	t.Setenv("ACM_LOCAL_HUB_CLUSTER_NAME", "static-hub")
-	defer t.Setenv("ACM_LOCAL_HUB_CLUSTER_NAME", "")
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	if got := LocalHubName(req); got != "static-hub" {
-		t.Fatalf("expected static-hub, got %q", got)
-	}
-	if !IsHubCluster("static-hub", req) {
-		t.Fatal("static-hub should be hub")
 	}
 }

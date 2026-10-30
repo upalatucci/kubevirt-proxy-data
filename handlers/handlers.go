@@ -49,7 +49,7 @@ func RequestHandler(c *gin.Context) {
 
 	} else {
 
-		httpClient := NewK8sHTTPClient()
+		httpClient := K8sHTTPClientForCluster(cluster, c.Request)
 
 		c.Request.RequestURI = ""
 		resp, err := httpClient.Do(c.Request)

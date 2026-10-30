@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	defaultACMConsoleBackendURL = "http://multicluster-console-chart-v2.open-cluster-management.svc.cluster.local:9000"
+	defaultACMConsoleBackendURL = "https://console-chart-console-v2.open-cluster-management.svc:3000"
 	defaultHubConfigCacheTTL    = 24 * time.Hour
 	defaultHubDiscoveryFailureCacheTTL = time.Minute
 
@@ -59,17 +59,10 @@ func resetHubNameCache() {
 	cachedHubName.mu.Unlock()
 }
 
-func configuredHubClusterName() string {
-	if override := strings.TrimSpace(HubClusterNameOverride); override != "" {
-		return override
-	}
-	return strings.TrimSpace(os.Getenv("ACM_LOCAL_HUB_CLUSTER_NAME"))
-}
-
 // LocalHubName returns the ACM hub ManagedCluster name (same as useHubClusterName / GET /hub localHubName).
 func LocalHubName(req *http.Request) string {
-	if name := configuredHubClusterName(); name != "" {
-		return name
+	if override := strings.TrimSpace(HubClusterNameOverride); override != "" {
+		return override
 	}
 
 	now := time.Now()

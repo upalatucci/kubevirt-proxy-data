@@ -51,9 +51,8 @@ The hub cluster name (`localHubName` from ACM console `GET /hub`, cached) can be
 | `CLUSTER_PROXY_ENABLED` | enabled | Set to `false` to disable cluster-proxy routing |
 | `CLUSTER_PROXY_ADDON_HOST` | `cluster-proxy-addon-user.multicluster-engine.svc.cluster.local` | cluster-proxy Service host |
 | `CLUSTER_PROXY_ADDON_PORT` | `9092` | cluster-proxy port |
-| `ACM_CONSOLE_BACKEND_URL` | `http://multicluster-console-chart-v2.open-cluster-management.svc.cluster.local:9000` | Base URL for `GET /hub` hub discovery |
+| `ACM_CONSOLE_BACKEND_URL` | `https://console-chart-console-v2.open-cluster-management.svc:3000` | Base URL for `GET /hub` hub discovery (RHACM console backend on the hub) |
 | `ACM_CONSOLE_HUB_URL` | (derived from backend URL) | Full override URL for hub configuration |
-| `ACM_LOCAL_HUB_CLUSTER_NAME` | (discovered) | Static hub ManagedCluster name when discovery is unavailable |
 | `ACM_HUB_CONFIG_CACHE_TTL` | `24h` | Cache TTL for successful `localHubName` discovery |
 | `ACM_HUB_DISCOVERY_FAILURE_CACHE_TTL` | `1m` | Backoff when hub discovery fails (avoids hammering `/hub` and ManagedCluster list) |
 

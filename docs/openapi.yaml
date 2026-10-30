@@ -202,7 +202,7 @@ paths:
         states).
 
         Hub cluster name discovery uses the pod service account when available (`GET /hub`
-        and ManagedCluster list), with optional static override via `ACM_LOCAL_HUB_CLUSTER_NAME`.
+        and ManagedCluster list).
 
         Responses may be cached for 15 seconds (request URI, query string, bearer
         token, and impersonation headers).

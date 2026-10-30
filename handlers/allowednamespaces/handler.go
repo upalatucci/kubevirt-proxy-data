@@ -46,7 +46,7 @@ func Handler(c *gin.Context) {
 
 	cluster := multicluster.ClusterFromRequest(c.Request, request.ResourceAttributes.Cluster)
 
-	client := handlers.NewK8sHTTPClient()
+	client := handlers.K8sHTTPClientForCluster(cluster, c.Request)
 	candidates, err := listNamespaceCandidates(client, c.Request, cluster)
 	if err != nil {
 		log.Println("Failed to list namespaces: ", err.Error())
