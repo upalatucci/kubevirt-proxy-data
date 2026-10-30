@@ -100,12 +100,20 @@ func discoverLocalHubName(req *http.Request) (string, error) {
 		ctx = req.Context()
 	}
 
+	// Prefer the hub ManagedCluster CR when developing against a remote API (oc login);
+	// ACM console /hub is often only reachable in-cluster.
+	if name, err := localHubNameFromManagedClusters(ctx, req); err == nil && name != "" {
+		return name, nil
+	} else if err != nil {
+		log.Printf("ManagedCluster hub lookup failed, trying ACM console /hub: %v", err)
+	}
+
 	name, err := localHubNameFromACMBackend(ctx, req)
 	if err == nil && name != "" {
 		return name, nil
 	}
 	if err != nil {
-		log.Printf("ACM console /hub lookup failed, falling back to ManagedCluster list: %v", err)
+		return "", err
 	}
 	return localHubNameFromManagedClusters(ctx, req)
 }

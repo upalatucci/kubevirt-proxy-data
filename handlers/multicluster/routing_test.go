@@ -5,10 +5,27 @@ import (
 	"testing"
 )
 
-func TestClusterFromRequestPrefersBody(t *testing.T) {
-	req := httptest.NewRequest("GET", "/apis?cluster=from-query", nil)
+func TestClusterFromRequestPrefersExplicit(t *testing.T) {
+	req := httptest.NewRequest("GET", "/apis/cluster/from-path/kubevirt.io/v1/virtualmachines", nil)
 	if ClusterFromRequest(req, "from-body") != "from-body" {
-		t.Fatal("expected explicit cluster to win over query")
+		t.Fatal("expected explicit cluster to win over path")
+	}
+}
+
+func TestParseProxyPath(t *testing.T) {
+	cluster, path := ParseProxyPath("/apis/cluster/bm07/kubevirt.io/v1/namespaces/default/virtualmachines")
+	if cluster != "bm07" || path != "/apis/kubevirt.io/v1/namespaces/default/virtualmachines" {
+		t.Fatalf("unexpected parse: cluster=%q path=%q", cluster, path)
+	}
+
+	cluster, path = ParseProxyPath("/api/cluster/bm07/v1/namespaces/default/persistentvolumeclaims")
+	if cluster != "bm07" || path != "/api/v1/namespaces/default/persistentvolumeclaims" {
+		t.Fatalf("unexpected core parse: cluster=%q path=%q", cluster, path)
+	}
+
+	cluster, path = ParseProxyPath("/apis/kubevirt.io/v1/virtualmachines")
+	if cluster != "" || path != "/apis/kubevirt.io/v1/virtualmachines" {
+		t.Fatalf("expected hub path unchanged, got cluster=%q path=%q", cluster, path)
 	}
 }
 

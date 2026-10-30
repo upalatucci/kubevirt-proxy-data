@@ -29,9 +29,20 @@ Returns the namespaces where the caller is allowed to perform a Kubernetes actio
 - **Response:** `allowedNamespaces` (string array) and optional `failures` (per-namespace SSAR errors)
 - **Caching:** 2 minutes (keyed by auth headers and request body; responses with `failures` are not cached)
 
-### `GET /apis/*`
+### `GET /api/*` and `GET /apis/*`
 
-Forwards the request to the hub API server (`KUBE_API_SERVER`, default `kubernetes.default.svc`) or to a managed cluster through the ACM **cluster-proxy** addon when the `cluster` query parameter names a spoke (for example `GET /apis/kubevirt.io/v1/virtualmachines?cluster=my-spoke`). The hub cluster name is resolved from the ACM console backend `GET /hub` (`localHubName`, same as `useHubClusterName` in the multicluster SDK), with a long-lived in-process cache; an omitted `cluster` or a value equal to that hub name uses the hub API directly. The caller's `Authorization` header (and websocket subprotocol impersonation headers when applicable) are passed through. This is not limited to VirtualMachine resources; any API path the UI requests can be proxied, subject to the user's RBAC on the target cluster.
+Kubernetes has two URL prefixes:
+
+- **`GET /api/*`** — core API (`/api/v1/namespaces/.../persistentvolumeclaims`, Pods, Secrets, …)
+- **`GET /apis/*`** — named API groups (`/apis/kubevirt.io/v1/...`). Paths must include **`{group}/{version}/`**; `/apis/v1/...` without a group returns **400** (use `/api/v1/...` for core resources).
+
+Both routes forward to the hub API server when the path has **no** `/cluster/{name}/` segment. For a managed cluster, insert **`cluster/{clusterName}/`** after `/api/` or `/apis/`:
+
+- Hub: `GET /apis/kubevirt.io/v1/namespaces/default/virtualmachines`
+- Spoke: `GET /apis/cluster/bm07/kubevirt.io/v1/namespaces/default/virtualmachines`
+- Core on spoke: `GET /api/cluster/bm07/v1/namespaces/default/persistentvolumeclaims`
+
+The hub cluster name (`localHubName` from ACM console `GET /hub`, cached) can be used in the path the same way; it still targets the hub API directly. Multicluster routing uses the ACM **cluster-proxy** addon for other cluster names. The caller's `Authorization` header (and websocket subprotocol impersonation headers when applicable) are passed through.
 
 ### Multicluster (ACM)
 

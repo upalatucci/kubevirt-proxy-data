@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	ClusterQueryParam = "cluster"
+	ClusterPathSegment = "cluster"
 
 	defaultClusterProxyHost = "cluster-proxy-addon-user.multicluster-engine.svc.cluster.local"
 	defaultClusterProxyPort = "9092"
@@ -28,12 +28,41 @@ func hubAPIServerHost() string {
 	return HubAPIServerHostResolver()
 }
 
-// ClusterFromRequest resolves the target managed cluster from the query string or request field.
-func ClusterFromRequest(r *http.Request, cluster string) string {
-	if cluster != "" {
+// ParseProxyPath extracts an optional /api/cluster/{name}/ or /apis/cluster/{name}/ prefix.
+// It returns the cluster name and the Kubernetes API path forwarded upstream (/api/... or /apis/...).
+func ParseProxyPath(path string) (cluster string, kubernetesPath string) {
+	if path == "" {
+		return "", path
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	trimmed := strings.Trim(path, "/")
+	if trimmed == "" {
+		return "", "/"
+	}
+
+	parts := strings.Split(trimmed, "/")
+	if len(parts) < 3 || parts[1] != ClusterPathSegment {
+		return "", path
+	}
+
+	cluster = strings.TrimSpace(parts[2])
+	rest := append([]string{parts[0]}, parts[3:]...)
+	if len(rest) == 1 && rest[0] == parts[0] {
+		return cluster, "/" + parts[0]
+	}
+	return cluster, "/" + strings.Join(rest, "/")
+}
+
+// ClusterFromRequest resolves the target cluster from an explicit value or the /cluster/{name}/ path prefix.
+func ClusterFromRequest(r *http.Request, explicitCluster string) string {
+	if cluster := strings.TrimSpace(explicitCluster); cluster != "" {
 		return cluster
 	}
-	return strings.TrimSpace(r.URL.Query().Get(ClusterQueryParam))
+	cluster, _ := ParseProxyPath(r.URL.Path)
+	return cluster
 }
 
 // UseClusterProxy reports whether outbound calls should use the cluster-proxy addon.

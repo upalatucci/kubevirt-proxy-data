@@ -27,7 +27,13 @@ func NewRouter() *gin.Engine {
 
 	router.GET("/health", cache.CacheByRequestURI(memoryStore, HealthCacheTime), handlers.HealthHandler)
 	router.POST("/apis/allowednamespaces", allowednamespaces.CacheMiddleware(memoryStore, AllowedNamespacesCacheTime), allowednamespaces.Handler)
-	router.GET("/apis/*path", apiProxyCacheMiddleware(memoryStore, APICacheTime), handlers.RequestHandler)
+
+	kubernetesProxy := []gin.HandlerFunc{
+		apiProxyCacheMiddleware(memoryStore, APICacheTime),
+		handlers.RequestHandler,
+	}
+	router.GET("/api/*path", kubernetesProxy...)
+	router.GET("/apis/*path", kubernetesProxy...)
 
 	return router
 }

@@ -5,8 +5,9 @@ info:
     HTTP API for the kubevirt-apiserver-proxy sidecar used by the KubeVirt UI.
 
     This specification documents endpoints implemented by the proxy itself.
-    `GET /apis/{apiPath}` forwards to the cluster Kubernetes API; request and response
-    bodies follow upstream API schemas (see the Kubernetes API reference). The proxy
+    `GET /api/{apiPath}` forwards core Kubernetes API requests (`/api/v1/...`).
+    `GET /apis/{apiPath}` forwards named API group requests (`/apis/{group}/v1/...`).
+    Request and response bodies follow upstream API schemas (see the Kubernetes API reference). The proxy
     may add `totalItems` and filter `items` when query parameters are present on list
     responses.
   version: 0.0.10
@@ -77,9 +78,9 @@ paths:
         integer, capped by server configuration). When omitted, the server default applies.
 
         Optional `resourceAttributes.cluster` targets a managed cluster via ACM cluster-proxy
-        (same semantics as the `cluster` query parameter on `GET /apis/*`). When omitted or equal
-        to the ACM hub cluster name (`localHubName` from console `GET /hub`), the hub API server
-        (`KUBE_API_SERVER`) is used. The `cluster` field is not sent to Kubernetes SSAR.
+        (same semantics as the `/cluster/{name}/` path prefix on `GET /api/*` and `GET /apis/*`).
+        When omitted or equal to the ACM hub cluster name (`localHubName` from console `GET /hub`),
+        the hub API server (`KUBE_API_SERVER`) is used. The `cluster` field is not sent to Kubernetes SSAR.
 
         Successful responses may be cached for 2 minutes (keyed by auth headers and
         request body). Responses that include `failures` are not cached.
@@ -125,17 +126,72 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/{apiPath}:
+    get:
+      summary: Kubernetes core API proxy (GET)
+      description: |
+        Forwards **core** API requests (`/api/v1/...`, for example PersistentVolumeClaims,
+        Pods, Secrets). Optional multicluster prefix: `/api/cluster/{clusterName}/v1/...`.
+        Same routing, auth, caching, and optional list filtering as `GET /apis/{apiPath}`.
+      operationId: proxyKubernetesCoreGet
+      tags:
+        - Kubernetes proxy
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: apiPath
+          in: path
+          required: true
+          description: |
+            Path after `/api/`, for example `v1/namespaces/default/persistentvolumeclaims` or
+            `cluster/bm07/v1/namespaces/default/persistentvolumeclaims`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Upstream success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProxiedListResponse"
+        "400":
+          description: Invalid proxy path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Upstream unauthorized
+        "403":
+          description: Upstream forbidden
+        "404":
+          description: Upstream not found
+        "500":
+          description: Proxy failed to reach the API server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        default:
+          description: Upstream status code and body are passed through when possible
+
   /apis/{apiPath}:
     get:
       summary: Kubernetes API proxy (GET)
       description: |
+        Forwards **named API group** requests. The path after `/apis/` must start with
+        an API group and version (`{group}/{version}/...`), for example
+        `kubevirt.io/v1/namespaces/default/virtualmachines`. Core resources belong on
+        `GET /api/{apiPath}` instead (`/api/v1/...`). Requests like `/apis/v1/...`
+        without a group are rejected with `400`.
+
         Forwards the request to the hub Kubernetes API server (`KUBE_API_SERVER`, default
-        `kubernetes.default.svc`) or, when the optional `cluster` query parameter names a
-        managed cluster, to the ACM cluster-proxy addon (`CLUSTER_PROXY_ADDON_HOST`:`CLUSTER_PROXY_ADDON_PORT`,
+        `kubernetes.default.svc`) or, when the path includes `/apis/cluster/{clusterName}/`,
+        to the ACM cluster-proxy addon (`CLUSTER_PROXY_ADDON_HOST`:`CLUSTER_PROXY_ADDON_PORT`,
         default `cluster-proxy-addon-user.multicluster-engine.svc.cluster.local:9092`).
-        Set `CLUSTER_PROXY_ENABLED=false` to always use the hub API server. The caller's
-        `Authorization` header is passed through. WebSocket upgrades use the same routing
-        with impersonation metadata in subprotocols when applicable.
+        Omit the `/cluster/{name}/` segment for hub traffic. Set `CLUSTER_PROXY_ENABLED=false`
+        to always use the hub API server. The caller's `Authorization` header is passed through.
+        WebSocket upgrades use the same routing with impersonation metadata in subprotocols when applicable.
 
         **List filtering:** If the client sends query parameters and the upstream response
         is a Kubernetes list (`items` array), the proxy may filter `items` server-side.
@@ -151,20 +207,13 @@ paths:
       security:
         - bearerAuth: []
       parameters:
-        - name: cluster
-          in: query
-          required: false
-          description: |
-            Managed cluster name for ACM cluster-proxy routing. Omitted or equal to the ACM hub
-            cluster name (`localHubName`) targets the hub API server.
-          schema:
-            type: string
         - name: apiPath
           in: path
           required: true
           description: |
             Kubernetes API path after `/apis/`, for example
-            `kubevirt.io/v1/namespaces/default/virtualmachines`.
+            `kubevirt.io/v1/namespaces/default/virtualmachines` or
+            `cluster/bm07/kubevirt.io/v1/namespaces/default/virtualmachines`.
           schema:
             type: string
           examples:
@@ -183,6 +232,12 @@ paths:
           description: Upstream forbidden
         "404":
           description: Upstream not found
+        "400":
+          description: Invalid proxy path (for example `/apis/v1/...` without an API group)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Proxy failed to reach the API server
           content:
@@ -354,8 +409,8 @@ components:
           type: string
           description: |
             Managed cluster for namespace discovery and SSAR routing. Same semantics as the
-            `cluster` query parameter on `GET /apis/*`. Omitted or equal to ACM `localHubName`
-            for the hub API server.
+            `/cluster/{name}/` path prefix on `GET /api/*` and `GET /apis/*`. Omitted or equal
+            to ACM `localHubName` for the hub API server.
         namespace:
           type: string
         verb:

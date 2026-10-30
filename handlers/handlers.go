@@ -16,11 +16,17 @@ var PROTOCOL string = "https"
 var ORIGIN = "http://localhost"
 
 func RequestHandler(c *gin.Context) {
+	cluster, kubernetesPath, err := NormalizeProxyPath(c.Request.URL.Path)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.Request.URL.Path = kubernetesPath
+
 	if c.Request.URL.Scheme == "" {
 		c.Request.URL.Scheme = "https"
 	}
 
-	cluster := multicluster.ClusterFromRequest(c.Request, "")
 	multicluster.RewriteProxyRequest(c.Request, cluster)
 
 	tlsConf := &tls.Config{InsecureSkipVerify: true}
