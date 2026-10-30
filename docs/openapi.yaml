@@ -195,9 +195,14 @@ paths:
 
         **List filtering:** If the client sends query parameters and the upstream response
         is a Kubernetes list (`items` array), the proxy may filter `items` server-side.
-        The JSON body includes `totalItems` (upstream list length) and `items` (filtered
-        when query parameters are present). Filter keys are JSON paths (for example
-        `status.printableStatus=Error` for VirtualMachine error states).
+        The legacy routing query parameter `cluster` is stripped before filtering so it
+        does not empty list responses. The JSON body includes `totalItems` (upstream list
+        length) and `items` (filtered when other query parameters are present). Filter keys
+        are JSON paths (for example `status.printableStatus=Error` for VirtualMachine error
+        states).
+
+        Hub cluster name discovery uses the pod service account when available (`GET /hub`
+        and ManagedCluster list), with optional static override via `ACM_LOCAL_HUB_CLUSTER_NAME`.
 
         Responses may be cached for 15 seconds (request URI, query string, bearer
         token, and impersonation headers).

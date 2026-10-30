@@ -12,6 +12,7 @@ func TestValidateKubernetesProxyPath(t *testing.T) {
 		{"/apis/cluster/bm07/kubevirt.io/v1/namespaces/default/virtualmachines", false},
 		{"/api/cluster/bm07/v1/namespaces/default/persistentvolumeclaims", false},
 		{"/apis/cluster//kubevirt.io/v1/virtualmachines", true},
+		{"/apis/cluster/../kubevirt.io/v1/virtualmachines", true},
 		{"/apis/kubevirt.io/cluster/bm07/v1/virtualmachines", true},
 		{"/apis/v1/namespaces/default/persistentvolumeclaims", true},
 		{"/apis/kubevirt.io/namespaces/default/virtualmachines", true},

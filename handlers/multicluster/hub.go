@@ -11,13 +11,20 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/kubevirt-ui/kubevirt-apiserver-proxy/util"
 )
 
 const (
 	defaultACMConsoleBackendURL = "http://multicluster-console-chart-v2.open-cluster-management.svc.cluster.local:9000"
 	defaultHubConfigCacheTTL    = 24 * time.Hour
+	defaultHubDiscoveryFailureCacheTTL = time.Minute
+
+	// ClusterQueryParam is a legacy routing query parameter still sent by some clients; it must not
+	// be treated as a list filter key.
+	ClusterQueryParam = "cluster"
+
+	// commonLocalHubClusterName is the default hub ManagedCluster name on many OCM installs when
+	// discovery fails (for example the caller cannot list ManagedCluster objects).
+	commonLocalHubClusterName = "local-cluster"
 
 	managedClustersAPIPath = "/apis/cluster.open-cluster-management.io/v1/managedclusters"
 	localClusterLabelQuery = "labelSelector=local-cluster%3Dtrue"
@@ -38,6 +45,7 @@ type hubConfigurationResponse struct {
 type hubNameCache struct {
 	mu        sync.RWMutex
 	name      string
+	failed    bool
 	expiresAt time.Time
 }
 
@@ -46,39 +54,64 @@ var cachedHubName hubNameCache
 func resetHubNameCache() {
 	cachedHubName.mu.Lock()
 	cachedHubName.name = ""
+	cachedHubName.failed = false
 	cachedHubName.expiresAt = time.Time{}
 	cachedHubName.mu.Unlock()
 }
 
-// LocalHubName returns the ACM hub ManagedCluster name (same as useHubClusterName / GET /hub localHubName).
-func LocalHubName(req *http.Request) string {
+func configuredHubClusterName() string {
 	if override := strings.TrimSpace(HubClusterNameOverride); override != "" {
 		return override
+	}
+	return strings.TrimSpace(os.Getenv("ACM_LOCAL_HUB_CLUSTER_NAME"))
+}
+
+// LocalHubName returns the ACM hub ManagedCluster name (same as useHubClusterName / GET /hub localHubName).
+func LocalHubName(req *http.Request) string {
+	if name := configuredHubClusterName(); name != "" {
+		return name
 	}
 
 	now := time.Now()
 	cachedHubName.mu.RLock()
-	if cachedHubName.name != "" && now.Before(cachedHubName.expiresAt) {
-		name := cachedHubName.name
-		cachedHubName.mu.RUnlock()
-		return name
+	if now.Before(cachedHubName.expiresAt) {
+		if cachedHubName.failed {
+			cachedHubName.mu.RUnlock()
+			return ""
+		}
+		if cachedHubName.name != "" {
+			name := cachedHubName.name
+			cachedHubName.mu.RUnlock()
+			return name
+		}
 	}
 	cachedHubName.mu.RUnlock()
 
 	name, err := discoverLocalHubName(req)
 	if err != nil {
 		log.Printf("Failed to discover ACM local hub cluster name: %v", err)
+		cacheHubDiscoveryFailure(now)
 		return ""
 	}
 	if name == "" {
+		cacheHubDiscoveryFailure(now)
 		return ""
 	}
 
 	cachedHubName.mu.Lock()
 	cachedHubName.name = name
+	cachedHubName.failed = false
 	cachedHubName.expiresAt = now.Add(hubConfigCacheTTL())
 	cachedHubName.mu.Unlock()
 	return name
+}
+
+func cacheHubDiscoveryFailure(now time.Time) {
+	cachedHubName.mu.Lock()
+	cachedHubName.name = ""
+	cachedHubName.failed = true
+	cachedHubName.expiresAt = now.Add(hubDiscoveryFailureCacheTTL())
+	cachedHubName.mu.Unlock()
 }
 
 // IsHubCluster reports whether the cluster selector targets the hub API server (not cluster-proxy).
@@ -88,10 +121,10 @@ func IsHubCluster(cluster string, req *http.Request) bool {
 		return true
 	}
 	hub := LocalHubName(req)
-	if hub == "" {
-		return false
+	if hub != "" {
+		return strings.EqualFold(cluster, hub)
 	}
-	return strings.EqualFold(cluster, hub)
+	return strings.EqualFold(cluster, commonLocalHubClusterName)
 }
 
 func discoverLocalHubName(req *http.Request) (string, error) {
@@ -124,9 +157,7 @@ func localHubNameFromACMBackend(ctx context.Context, incomingReq *http.Request) 
 	if err != nil {
 		return "", err
 	}
-	if incomingReq != nil {
-		util.ForwardAuthHeaders(incomingReq, request)
-	}
+	setHubDiscoveryAuth(incomingReq, request)
 	request.Header.Set("Accept", "application/json")
 
 	resp, err := K8sHTTPClientProvider().Do(request)
@@ -156,9 +187,7 @@ func localHubNameFromManagedClusters(ctx context.Context, incomingReq *http.Requ
 	if err != nil {
 		return "", err
 	}
-	if incomingReq != nil {
-		util.ForwardAuthHeaders(incomingReq, request)
-	}
+	setHubDiscoveryAuth(incomingReq, request)
 	request.Header.Set("Accept", "application/json")
 
 	resp, err := K8sHTTPClientProvider().Do(request)
@@ -210,6 +239,18 @@ func hubConfigCacheTTL() time.Duration {
 	parsed, err := time.ParseDuration(raw)
 	if err != nil || parsed < time.Minute {
 		return defaultHubConfigCacheTTL
+	}
+	return parsed
+}
+
+func hubDiscoveryFailureCacheTTL() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("ACM_HUB_DISCOVERY_FAILURE_CACHE_TTL"))
+	if raw == "" {
+		return defaultHubDiscoveryFailureCacheTTL
+	}
+	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed < time.Second {
+		return defaultHubDiscoveryFailureCacheTTL
 	}
 	return parsed
 }

@@ -92,6 +92,48 @@ func TestRequestHandler_VMListFiltering(t *testing.T) {
 	}
 }
 
+func TestRequestHandler_IgnoresClusterQueryParamForListFilters(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("APP_ENV", "dev")
+	t.Setenv("SERVICE_ACCOUNT_CA_PATH", filepath.Join(t.TempDir(), "missing-ca.crt"))
+
+	const vmListPath = "/apis/kubevirt.io/v1/namespaces/default/virtualmachines"
+
+	apiServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != vmListPath {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"kind":"VirtualMachineList","items":[{"metadata":{"name":"vm-a"}}]}`))
+	}))
+	defer apiServer.Close()
+
+	originalAPIServerURL := handlers.APIServerURL
+	handlers.APIServerURL = strings.TrimPrefix(apiServer.URL, "https://")
+	t.Cleanup(func() {
+		handlers.APIServerURL = originalAPIServerURL
+	})
+
+	router := server.NewRouter()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, vmListPath+"?cluster=bm07", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	items, ok := payload["items"].([]interface{})
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected 1 item when cluster query is not a filter key, got %v", payload["items"])
+	}
+}
+
 func TestRequestHandler_RejectsApisPathWithoutGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Setenv("APP_ENV", "dev")

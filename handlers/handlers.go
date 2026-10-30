@@ -66,7 +66,9 @@ func RequestHandler(c *gin.Context) {
 		}
 
 		defer resp.Body.Close()
-		filteredJson := util.FilterResponseQuery(bodyBytes, c.Request.URL.Query())
+		filterQuery := c.Request.URL.Query()
+		filterQuery.Del(multicluster.ClusterQueryParam)
+		filteredJson := util.FilterResponseQuery(bodyBytes, filterQuery)
 
 		if err != nil {
 			log.Println("Unable to transform response body to json) ", err.Error())

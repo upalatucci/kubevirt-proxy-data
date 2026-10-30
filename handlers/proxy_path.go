@@ -11,8 +11,13 @@ import (
 // validates the Kubernetes API path, and returns the cluster name and upstream path.
 func NormalizeProxyPath(path string) (cluster string, kubernetesPath string, err error) {
 	cluster, kubernetesPath = multicluster.ParseProxyPath(path)
-	if hasClusterPathPrefix(path) && cluster == "" {
-		return "", "", fmt.Errorf("cluster name is required in /cluster/{name}/ path prefix")
+	if hasClusterPathPrefix(path) {
+		if cluster == "" {
+			return "", "", fmt.Errorf("cluster name is required in /cluster/{name}/ path prefix")
+		}
+		if err := multicluster.ValidateClusterName(cluster); err != nil {
+			return "", "", err
+		}
 	}
 	if err := validateKubernetesAPIPath(kubernetesPath); err != nil {
 		return "", "", err
